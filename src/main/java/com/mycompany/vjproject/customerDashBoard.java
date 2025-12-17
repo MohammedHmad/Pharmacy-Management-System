@@ -44,6 +44,7 @@ public class customerDashBoard extends javax.swing.JFrame {
     private ResultSet rs ;
     private Connection conn = null;
     boolean MedicinSelceted = false;
+    boolean ismedicinAlreadyThere = false;
     private PreparedStatement pst = null;
     
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(customerDashBoard.class.getName());
@@ -51,28 +52,6 @@ public class customerDashBoard extends javax.swing.JFrame {
     private customerDashBoard() {
         throw new UnsupportedOperationException("Not supported yet."); // Generated from nbfs://nbhost/SystemFileSystem/Templates/Classes/Code/GeneratedMethodBody
     }
-    
-    private void Fillcombo()throws SQLException{
-        try{
-            conn = Connection2DB.ConneectorDB();
-            db_query = "select * from `pharmacyDB`.`Medicines` where `MedicineName`=? AND `MedicineID`=?";
-            
-            pst =conn.prepareStatement(db_query);
-            pst.setString(1,medicinName);
-            pst.setString(2,medicinId);
-            rs = pst.executeQuery();
-            if(rs.next()){
-                
-            }
-        }catch(SQLException e){
-            JOptionPane.showMessageDialog(null,e);
-        }
-        finally{
-            conn.close();
-        }
-    }
-    
-    
     
     private void Update_MedicinesTable() throws SQLException{
         try{
@@ -87,11 +66,11 @@ public class customerDashBoard extends javax.swing.JFrame {
         }catch(SQLException e){
             JOptionPane.showMessageDialog(null,e);
         }
-        finally{
-            conn.close();
-        }
+        
         
     }
+    
+   
     
     private void Update_OrdersTable() throws SQLException{
         try{
@@ -140,63 +119,73 @@ public class customerDashBoard extends javax.swing.JFrame {
      * @throws java.sql.SQLException
      */
     public customerDashBoard(String userId) throws SQLException {
-        initComponents();
-        userID = userId;
-        Update_MedicinesTable();
-        Update_OrdersTable();        
-        model = (DefaultTableModel) CartTable.getModel();
-        TableColumn quantityColumn = CartTable.getColumnModel().getColumn(3);
+    initComponents();
+    userID = userId;
+    Update_MedicinesTable();
+    Update_OrdersTable();
+    model = (DefaultTableModel) CartTable.getModel();
+    TableColumn quantityColumn = CartTable.getColumnModel().getColumn(3);
 
-        DefaultCellEditor quantityEditor = new DefaultCellEditor(new javax.swing.JTextField());
+    DefaultCellEditor quantityEditor = new DefaultCellEditor(new javax.swing.JTextField());
 
-        quantityEditor.addCellEditorListener(new javax.swing.event.CellEditorListener() {
+    quantityEditor.addCellEditorListener(new javax.swing.event.CellEditorListener() {
 
-            @Override
-            public void editingStopped(javax.swing.event.ChangeEvent e) {
+        @Override
+        public void editingStopped(javax.swing.event.ChangeEvent e) {
 
-                int newQuantity = 0;
-                int selectedRow = CartTable.getSelectedRow();
+            int newQuantity = 0;
+            int selectedRow = CartTable.getSelectedRow();
+            
+            // 1. Get the Medicine ID from the Cart Row being edited
+            String currentMedID = CartTable.getValueAt(selectedRow, 1).toString();
+            int actualStock = 0;
 
-                try {
-
-                    String valueStr = CartTable.getValueAt(selectedRow, 3).toString();
-                    newQuantity = Integer.parseInt(valueStr);
-                } catch (NumberFormatException ex) {
-                    javax.swing.JOptionPane.showMessageDialog(null, "Please enter a valid number.");
-                    CartTable.setValueAt(1, selectedRow, 3); 
-                    return;
+            try {
+                // 2. Query the DB to get the REAL stock for this specific item
+                Connection tempConn = Connection2DB.ConneectorDB();
+                String sql = "SELECT quantity FROM Medicines WHERE MedicineID = ?";
+                PreparedStatement tempPst = tempConn.prepareStatement(sql);
+                tempPst.setString(1, currentMedID);
+                ResultSet tempRs = tempPst.executeQuery();
+                
+                if (tempRs.next()) {
+                    actualStock = tempRs.getInt("quantity");
                 }
+                tempConn.close();
 
-                int availableLimit = medicinquantity - medicinQuantityInCartTable;
+                String valueStr = CartTable.getValueAt(selectedRow, 3).toString();
+                newQuantity = Integer.parseInt(valueStr);
 
-                if (newQuantity > availableLimit) {
-
-                    javax.swing.JOptionPane.showMessageDialog(null, 
-                        """
-                        This is more than what is available!
-                        (Limit: """ + availableLimit + ")");
-
-                    CartTable.setValueAt(availableLimit, selectedRow, 3);
-
-                } else if (newQuantity <= 0) {
-
-                    javax.swing.JOptionPane.showMessageDialog(null, "Quantity must be at least 1.");
-                    CartTable.setValueAt(1, selectedRow, 3);
-                }
-
-                updateTotalPrice();
+            } catch (Exception ex) {
+                javax.swing.JOptionPane.showMessageDialog(null, "Invalid Number or DB Error");
+                CartTable.setValueAt(1, selectedRow, 3); 
+                return;
             }
 
-            @Override
-            public void editingCanceled(javax.swing.event.ChangeEvent e) {
+            // 3. Compare New Quantity directly against Actual Stock
+            if (newQuantity > actualStock) {
+                javax.swing.JOptionPane.showMessageDialog(null, 
+                    "This is more than what is available!\n(Stock Limit: " + actualStock + ")");
+                
+                // Set it to the Max Stock, NOT the difference
+                CartTable.setValueAt(actualStock, selectedRow, 3);
 
+            } else if (newQuantity <= 0) {
+                javax.swing.JOptionPane.showMessageDialog(null, "Quantity must be at least 1.");
+                CartTable.setValueAt(1, selectedRow, 3);
             }
-        });
-        
-        
 
-        quantityColumn.setCellEditor(quantityEditor);
-    }
+            // 4. Update the total price
+            updateTotalPrice();
+        }
+
+        @Override
+        public void editingCanceled(javax.swing.event.ChangeEvent e) {
+        }
+    });
+
+    quantityColumn.setCellEditor(quantityEditor);
+}
 
     public double updateTotalPrice() {
     double total = 0;
@@ -224,7 +213,7 @@ public class customerDashBoard extends javax.swing.JFrame {
      * regenerated by the Form Editor.
      */
     @SuppressWarnings("unchecked")
-    // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
+    // <editor-fold defaultstate="collapsed" desc="Generated Code">                          
     private void initComponents() {
 
         jButton4 = new javax.swing.JButton();
@@ -829,13 +818,13 @@ public class customerDashBoard extends javax.swing.JFrame {
         );
 
         pack();
-    }// </editor-fold>//GEN-END:initComponents
+    }// </editor-fold>                        
 
-    private void IdMedFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_IdMedFieldActionPerformed
+    private void IdMedFieldActionPerformed(java.awt.event.ActionEvent evt) {                                           
         // TODO add your handling code here:
-    }//GEN-LAST:event_IdMedFieldActionPerformed
+    }                                          
 
-    private void MedicinsTableMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_MedicinsTableMouseClicked
+    private void MedicinsTableMouseClicked(java.awt.event.MouseEvent evt) {                                           
         try{
             MedicinSelceted = true;
             conn = Connection2DB.ConneectorDB();
@@ -847,21 +836,19 @@ public class customerDashBoard extends javax.swing.JFrame {
             pst = conn.prepareStatement(db_query);
             rs = pst.executeQuery();
             if(rs.next()){
-                String attrebut1 = rs.getString("MedicineID");
-                int attrebut2 = rs.getInt("price");
-                int attrebut3 = rs.getInt("quantity");
-                String attrebut4 = rs.getString("MedicineName");
-                String attrebut5 = rs.getString("Details");
-                medicinId = attrebut1;
-                medicinprice = attrebut2;
-                medicinquantity = attrebut3;
-                medicinName = attrebut4;
+                
+                medicinId = rs.getString("MedicineID");
+                medicinprice = rs.getInt("price");
+                medicinquantity = rs.getInt("quantity");
+                medicinName = rs.getString("MedicineName");
+                
                 IdMedField.setText(medicinId);
                 PriceMedField.setText(String.format("%s", medicinprice));
                 QuantityMedField.setText(String.format("%s", medicinquantity));
                 NameMedField.setText(medicinName);
-                MedDetailsArea.setText(attrebut5);
+                MedDetailsArea.setText(rs.getString("Details"));
                 medicinquantity=rs.getInt("quantity");
+                
                 for(int i = 1;i<=medicinquantity;i++){
                     item = String.format("%s", i);
                     QuantityCombo.addItem(item);
@@ -881,13 +868,13 @@ public class customerDashBoard extends javax.swing.JFrame {
                 JOptionPane.showMessageDialog(null,ex);
             }
         }
-    }//GEN-LAST:event_MedicinsTableMouseClicked
+    }                                          
 
-    private void QuantityMedFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_QuantityMedFieldActionPerformed
+    private void QuantityMedFieldActionPerformed(java.awt.event.ActionEvent evt) {                                                 
         // TODO add your handling code here:
-    }//GEN-LAST:event_QuantityMedFieldActionPerformed
+    }                                                
 
-    private void OrdersTableMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_OrdersTableMouseClicked
+    private void OrdersTableMouseClicked(java.awt.event.MouseEvent evt) {                                         
         try{
             conn = Connection2DB.ConneectorDB();
             
@@ -927,37 +914,37 @@ public class customerDashBoard extends javax.swing.JFrame {
                 JOptionPane.showMessageDialog(null,ex);
             }
         }
-    }//GEN-LAST:event_OrdersTableMouseClicked
+    }                                        
 
-    private void OrderSearchtxtFocusGained(java.awt.event.FocusEvent evt) {//GEN-FIRST:event_OrderSearchtxtFocusGained
+    private void OrderSearchtxtFocusGained(java.awt.event.FocusEvent evt) {                                           
         if(OrderSearchtxt.getText().equals("Order number"))
         OrderSearchtxt.setText("");        // TODO add your handling code here:
-    }//GEN-LAST:event_OrderSearchtxtFocusGained
+    }                                          
 
-    private void OrderSearchtxtFocusLost(java.awt.event.FocusEvent evt) {//GEN-FIRST:event_OrderSearchtxtFocusLost
+    private void OrderSearchtxtFocusLost(java.awt.event.FocusEvent evt) {                                         
         if(OrderSearchtxt.getText().equals(""))
         OrderSearchtxt.setText("Order number");    // TODO add your handling code here:
-    }//GEN-LAST:event_OrderSearchtxtFocusLost
+    }                                        
 
-    private void OrderSearchtxtActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_OrderSearchtxtActionPerformed
+    private void OrderSearchtxtActionPerformed(java.awt.event.ActionEvent evt) {                                               
         // TODO add your handling code here:
-    }//GEN-LAST:event_OrderSearchtxtActionPerformed
+    }                                              
 
-    private void OrderDetailsTableMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_OrderDetailsTableMouseClicked
+    private void OrderDetailsTableMouseClicked(java.awt.event.MouseEvent evt) {                                               
         // TODO add your handling code here:
-    }//GEN-LAST:event_OrderDetailsTableMouseClicked
+    }                                              
 
-    private void ODMedicSearchtxtFocusGained(java.awt.event.FocusEvent evt) {//GEN-FIRST:event_ODMedicSearchtxtFocusGained
+    private void ODMedicSearchtxtFocusGained(java.awt.event.FocusEvent evt) {                                             
         if(ODMedicSearchtxt.getText().equals("Medicin name"))
         ODMedicSearchtxt.setText("");        // TODO add your handling code here:
-    }//GEN-LAST:event_ODMedicSearchtxtFocusGained
+    }                                            
 
-    private void ODMedicSearchtxtFocusLost(java.awt.event.FocusEvent evt) {//GEN-FIRST:event_ODMedicSearchtxtFocusLost
+    private void ODMedicSearchtxtFocusLost(java.awt.event.FocusEvent evt) {                                           
         if(ODMedicSearchtxt.getText().equals(""))
         ODMedicSearchtxt.setText("Medicin name");        // TODO add your handling code here:
-    }//GEN-LAST:event_ODMedicSearchtxtFocusLost
+    }                                          
 
-    private void ODMedicSearchtxtActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_ODMedicSearchtxtActionPerformed
+    private void ODMedicSearchtxtActionPerformed(java.awt.event.ActionEvent evt) {                                                 
         if(!ODMedicSearchtxt.getText().equals("")){
             try{
                 conn = Connection2DB.ConneectorDB();
@@ -975,30 +962,32 @@ public class customerDashBoard extends javax.swing.JFrame {
         else{
             
         }
-    }//GEN-LAST:event_ODMedicSearchtxtActionPerformed
+    }                                                
 
-    private void IDtxtActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_IDtxtActionPerformed
+    private void IDtxtActionPerformed(java.awt.event.ActionEvent evt) {                                      
         // TODO add your handling code here:
-    }//GEN-LAST:event_IDtxtActionPerformed
+    }                                     
 
-    private void DatetxtActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_DatetxtActionPerformed
+    private void DatetxtActionPerformed(java.awt.event.ActionEvent evt) {                                        
         // TODO add your handling code here:
-    }//GEN-LAST:event_DatetxtActionPerformed
+    }                                       
 
-    private void QuantityComboActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_QuantityComboActionPerformed
+    private void QuantityComboActionPerformed(java.awt.event.ActionEvent evt) {                                              
             medicinquantityInCart = QuantityCombo.getSelectedIndex()+1;
-    }//GEN-LAST:event_QuantityComboActionPerformed
+    }                                             
 
-    private void AddtoCartBtnActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_AddtoCartBtnActionPerformed
+    private void AddtoCartBtnActionPerformed(java.awt.event.ActionEvent evt) {                                             
+        DefaultTableModel cart = (DefaultTableModel) CartTable.getModel();
+//        DefaultTableModel MedicineTable = (DefaultTableModel) MedicinsTable.getModel();
         if(MedicinSelceted){
-            boolean ismedicinAlreadyThere = false;
-            for(int i = 0;i<model.getRowCount();i++){
-                if(model.getValueAt(i, 1).equals(medicinId)){
+            for(int i = 0;i<cart.getRowCount();i++){
+                if(cart.getValueAt(i, 1).equals(medicinId)){
                     ismedicinAlreadyThere = true;
-                    if(medicinquantityInCart<=medicinquantity-(Integer.parseInt(model.getValueAt(i, 3).toString()))){
+                    if(medicinquantityInCart<=medicinquantity-(Integer.parseInt(cart.getValueAt(i, 3).toString()))){
                         medicinQuantityInCartTable += medicinquantityInCart ;
-                        model.setValueAt(medicinQuantityInCartTable, i, 3);
+                        cart.setValueAt(medicinQuantityInCartTable, i, 3);
                         updateTotalPrice();
+                        
                     }else{
                         JOptionPane.showMessageDialog(null,"This is more than what is available!");
                     }
@@ -1007,19 +996,19 @@ public class customerDashBoard extends javax.swing.JFrame {
             }
             if(!ismedicinAlreadyThere){
                 medicinQuantityInCartTable = medicinquantityInCart;
-                model.addRow(new Object[]{medicinName, medicinId, medicinprice,medicinQuantityInCartTable});
+                cart.addRow(new Object[]{medicinName, medicinId, medicinprice,medicinQuantityInCartTable});
                 updateTotalPrice();
             }
         }
         else{
                 JOptionPane.showMessageDialog(null,"There is no item is selected!");
         }
-    }//GEN-LAST:event_AddtoCartBtnActionPerformed
+    }                                            
 
-    private void CartTableMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_CartTableMouseClicked
-    }//GEN-LAST:event_CartTableMouseClicked
+    private void CartTableMouseClicked(java.awt.event.MouseEvent evt) {                                       
+    }                                      
 
-    private void jButton5ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton5ActionPerformed
+    private void jButton5ActionPerformed(java.awt.event.ActionEvent evt) {                                         
         DefaultTableModel cart = (DefaultTableModel) CartTable.getModel();
 
         int selectedRow = CartTable.getSelectedRow();
@@ -1032,10 +1021,10 @@ public class customerDashBoard extends javax.swing.JFrame {
         } else {
             JOptionPane.showMessageDialog(null, "Please select an item to remove.");
         }
-    }//GEN-LAST:event_jButton5ActionPerformed
+    }                                        
 
     @SuppressWarnings("empty-statement")
-    private void BuyBtnActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_BuyBtnActionPerformed
+    private void BuyBtnActionPerformed(java.awt.event.ActionEvent evt) {                                       
         DefaultTableModel cart = (DefaultTableModel) CartTable.getModel();
 
         // 1. Check if cart is empty
@@ -1106,12 +1095,14 @@ public class customerDashBoard extends javax.swing.JFrame {
             // If we reached here, everything worked. Save changes.
             conn.commit();
             Update_OrdersTable();
+            
             JOptionPane.showMessageDialog(this, "Order Placed Successfully! Order ID: " + newOrderID);
 
             // 5. Clear the cart UI
             cart.setRowCount(0);
             Totaltxt.setText("0$");
             updateTotalPrice();
+            Update_MedicinesTable();
 
         } catch (SQLException e) {
             // --- ROLLBACK ---
@@ -1136,9 +1127,9 @@ public class customerDashBoard extends javax.swing.JFrame {
             }
         }
 
-    }//GEN-LAST:event_BuyBtnActionPerformed
+    }                                      
 
-    private void SearchtxtActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_SearchtxtActionPerformed
+    private void SearchtxtActionPerformed(java.awt.event.ActionEvent evt) {                                          
         if(!Searchtxt.getText().equals("")){
             try{
                 conn = Connection2DB.ConneectorDB();
@@ -1165,23 +1156,23 @@ public class customerDashBoard extends javax.swing.JFrame {
         } catch (SQLException ex) {
             System.getLogger(pharmcistDashBoard.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
         }
-    }//GEN-LAST:event_SearchtxtActionPerformed
+    }                                         
 
-    private void jScrollPane5MouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_jScrollPane5MouseClicked
+    private void jScrollPane5MouseClicked(java.awt.event.MouseEvent evt) {                                          
 
-    }//GEN-LAST:event_jScrollPane5MouseClicked
+    }                                         
 
-    private void jMenu1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenu1ActionPerformed
+    private void jMenu1ActionPerformed(java.awt.event.ActionEvent evt) {                                       
 
-    }//GEN-LAST:event_jMenu1ActionPerformed
+    }                                      
 
-    private void jMenuItem1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItem1ActionPerformed
+    private void jMenuItem1ActionPerformed(java.awt.event.ActionEvent evt) {                                           
         pharmacyLogin frm = new pharmacyLogin();
         frm.setVisible(true);
         this.dispose();
-    }//GEN-LAST:event_jMenuItem1ActionPerformed
+    }                                          
 
-    private void SearchtxtKeyReleased(java.awt.event.KeyEvent evt) {//GEN-FIRST:event_SearchtxtKeyReleased
+    private void SearchtxtKeyReleased(java.awt.event.KeyEvent evt) {                                      
         // or use the generic TableModel interface.
         javax.swing.table.TableModel searchedMedicineTable = MedicinsTable.getModel();
 
@@ -1204,9 +1195,9 @@ public class customerDashBoard extends javax.swing.JFrame {
             sorter.setRowFilter(RowFilter.regexFilter("(?i)" + searchString, 0));
         }
 
-    }//GEN-LAST:event_SearchtxtKeyReleased
+    }                                     
 
-    private void OrderSearchtxtKeyReleased(java.awt.event.KeyEvent evt) {//GEN-FIRST:event_OrderSearchtxtKeyReleased
+    private void OrderSearchtxtKeyReleased(java.awt.event.KeyEvent evt) {                                           
         // Note: DbUtils returns a TableModel, so we cast to DefaultTableModel if possible, 
         // or use the generic TableModel interface.
         javax.swing.table.TableModel model = OrdersTable.getModel();
@@ -1228,9 +1219,9 @@ public class customerDashBoard extends javax.swing.JFrame {
             // The indices parameter (optional) specifies which column to look at. 
             // If left empty, it searches all columns.
             sorter.setRowFilter(RowFilter.regexFilter("(?i)" + searchString, 0));
-        }    }//GEN-LAST:event_OrderSearchtxtKeyReleased
+        }    }                                          
 
-    private void ODMedicSearchtxtKeyReleased(java.awt.event.KeyEvent evt) {//GEN-FIRST:event_ODMedicSearchtxtKeyReleased
+    private void ODMedicSearchtxtKeyReleased(java.awt.event.KeyEvent evt) {                                             
         javax.swing.table.TableModel searchedOrderDetailsTable = OrderDetailsTable.getModel();
 
         // 2. Create the sorter
@@ -1248,7 +1239,7 @@ public class customerDashBoard extends javax.swing.JFrame {
         } else {
             sorter.setRowFilter(RowFilter.regexFilter("(?i)" + searchString,0));
         }
-    }//GEN-LAST:event_ODMedicSearchtxtKeyReleased
+    }                                            
 
     /**
      * @param args the command line arguments
@@ -1277,7 +1268,7 @@ public class customerDashBoard extends javax.swing.JFrame {
         });
     }
 
-    // Variables declaration - do not modify//GEN-BEGIN:variables
+    // Variables declaration - do not modify                     
     private javax.swing.JButton AddtoCartBtn;
     private javax.swing.JButton BuyBtn;
     private javax.swing.JTable CartTable;
@@ -1331,5 +1322,5 @@ public class customerDashBoard extends javax.swing.JFrame {
     private javax.swing.JScrollPane jScrollPane5;
     private javax.swing.JScrollPane jScrollPane6;
     private javax.swing.JTabbedPane jTabbedPane1;
-    // End of variables declaration//GEN-END:variables
+    // End of variables declaration                   
 }
